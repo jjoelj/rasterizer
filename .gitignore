@@ -1,0 +1,7 @@
+.idea/
+
+./*.png
+
+target
+
+rasterizer.iml
