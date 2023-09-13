@@ -49,7 +49,7 @@ fn merge_data(position_buf: Vec<Position>, color_buf: Vec<Color>, range: Range<u
     return Points::<8>(result);
 }
 
-fn draw_points(img: &mut Image, points: Points<8>, s_rgb: bool, depth: bool) {
+fn draw_points(img: &mut Image, points: Points<8>, depth: bool, s_rgb: bool) {
     for point in points {
         if point[X] < 0f64 || point[Y] < 0f64 {
             continue;
@@ -62,6 +62,25 @@ fn draw_points(img: &mut Image, points: Points<8>, s_rgb: bool, depth: bool) {
             }
         }
     }
+}
+
+fn draw_triangle(mut img: &mut Image, points: &mut Points<8>, depth: bool, s_rgb: bool, hyp: bool) {
+
+    if hyp {
+        points.divide_by_w(W, &Box::from([X, Y, Z, R, G, B, A]));
+    } else {
+        points.divide_by_w(W, &Box::from([X, Y]));
+    }
+
+    points.transform_to_viewport(X, Y, img.width(), img.height());
+
+    let mut triangle = scanline(points[0], points[1], points[2]);
+
+    if hyp {
+        triangle.undivide_by_w(W, &Box::from([Z, R, G, B, A]));
+    }
+
+    draw_points(&mut img, triangle, depth, s_rgb);
 }
 
 fn main() {
@@ -78,8 +97,9 @@ fn main() {
     let mut color_buf: Vec<Color> = vec![];
     let mut element_buf: Vec<usize> = vec![];
 
-    let mut s_rgb: bool = false;
     let mut depth: bool = false;
+    let mut s_rgb: bool = false;
+    let mut hyp: bool = false;
 
     let mut line_no = 0;
     let mut invalid = false;
@@ -127,7 +147,9 @@ fn main() {
                     "s_rgb" => {
                         s_rgb = true;
                     }
-                    "hyp" => {}
+                    "hyp" => {
+                        hyp = true;
+                    }
                     "fsaa" => {}
                     "cull" => {}
                     "decals" => {}
@@ -135,42 +157,34 @@ fn main() {
                     "texture" => {}
                     "uniformMatrix" => {}
                     "position" => {
-                        if let Ok(size) = fields[1].parse::<usize>() {
+                        if let Ok(args) = read_args::<f64>(fields[1..].iter()) {
+                            let size = args[0] as usize;
                             if !(1..=4).contains(&size) {
                                 invalid = true;
                                 continue;
                             }
 
                             position_buf.clear();
-                            for j in (2..=fields.len() - size).step_by(size) {
-                                if let Ok(position) = read_args(fields[j..j + size].iter()) {
-                                    position_buf.push(Position::new(position));
-                                } else {
-                                    position_buf.clear();
-                                    invalid = true;
-                                    break;
-                                }
+                            for j in (1..=args.len() - size).step_by(size) {
+                                let position = args[j..j + size].to_vec();
+                                position_buf.push(Position::new(position));
                             }
                         } else {
                             invalid = true;
                         }
                     }
                     "color" => {
-                        if let Ok(size) = fields[1].parse::<usize>() {
+                        if let Ok(args) = read_args::<f64>(fields[1..].iter()) {
+                            let size = args[0] as usize;
                             if !(3..=4).contains(&size) {
                                 invalid = true;
                                 continue;
                             }
 
                             color_buf.clear();
-                            for j in (2..=fields.len() - size).step_by(size) {
-                                if let Ok(color) = read_args(fields[j..j + size].iter()) {
-                                    color_buf.push(Color::new(color));
-                                } else {
-                                    color_buf.clear();
-                                    invalid = true;
-                                    break;
-                                }
+                            for j in (1..=args.len() - size).step_by(size) {
+                                let color = args[j..j+size].to_vec();
+                                color_buf.push(Color::new(color));
                             }
                         } else {
                             invalid = true;
@@ -190,12 +204,8 @@ fn main() {
 
                             for j in (0..=count - 3).step_by(3) {
                                 let mut points: Points<8> = merge_data(position_buf.clone(), color_buf.clone(), first + j..first + j + 3);
-                                points.divide_by_w(W);
-                                points.transform_to_viewport(X, Y, img.width(), img.height());
-                                points.undivide_by_w(W, &Box::from([R, G, B, A]));
 
-                                let triangle = scanline(points[0], points[1], points[2]);
-                                draw_points(&mut img, triangle, s_rgb, depth);
+                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp);
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {
@@ -222,12 +232,8 @@ fn main() {
                                 }
 
                                 let mut points: Points<8> = merge_data(temp_position_buf, temp_color_buf, 0..3);
-                                points.divide_by_w(W);
-                                points.transform_to_viewport(X, Y, img.width(), img.height());
-                                points.undivide_by_w(W, &Box::from([R, G, B, A]));
 
-                                let triangle = scanline(points[0], points[1], points[2]);
-                                draw_points(&mut img, triangle, s_rgb, depth);
+                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp);
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {

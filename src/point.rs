@@ -36,9 +36,9 @@ impl<const DIM: usize> Points<DIM> {
         self.0.len()
     }
 
-    pub(crate) fn divide_by_w(&mut self, d: usize) {
+    pub(crate) fn divide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
         for point in &mut self.0 {
-            point.divide_by_w(d);
+            point.divide_by_w(wd, fields);
         }
     }
 
@@ -48,9 +48,9 @@ impl<const DIM: usize> Points<DIM> {
         }
     }
 
-    pub(crate) fn undivide_by_w(&mut self, d: usize, fields: &Box<[usize]>) {
+    pub(crate) fn undivide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
         for point in &mut self.0 {
-            point.undivide_by_w(d, fields);
+            point.undivide_by_w(wd, fields);
         }
     }
 }
@@ -113,10 +113,12 @@ impl<const DIM: usize> Point<DIM> {
         Rgba([r, g, b, (self.data[A] * 255f64) as u8])
     }
 
-    pub(crate) fn divide_by_w(&mut self, d: usize) {
-        let w = self[d];
-        *self /= w;
-        self[d] = 1f64 / w;
+    pub(crate) fn divide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
+        let w = self[wd];
+        for &field in fields.into_iter() {
+            self[field] /= w;
+        }
+        self[wd] = 1f64 / w;
     }
 
     pub(crate) fn transform_to_viewport(&mut self, xd: usize, yd: usize, width: u32, height: u32) {
@@ -126,12 +128,12 @@ impl<const DIM: usize> Point<DIM> {
         self[yd] = (y + 1f64) * height as f64 / 2f64;
     }
 
-    pub(crate) fn undivide_by_w(&mut self, d: usize, fields: &Box<[usize]>) {
-        let un_w = self[d];
+    pub(crate) fn undivide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
+        let un_w = self[wd];
         for &field in fields.into_iter() {
             self[field] /= un_w;
         }
-        self[d] = 1f64 / un_w;
+        self[wd] = 1f64 / un_w;
     }
 }
 
