@@ -54,7 +54,7 @@ fn draw_points(img: &mut RgbaImage, points: Points<8>, s_rgb: bool) {
         }
         let (x, y) = (point[X] as u32, point[Y] as u32);
         if x < img.width() && y < img.height() {
-            let pixel:Rgba<u8> = if s_rgb { point.pixel_s_rgb() } else { point.pixel() };
+            let pixel: Rgba<u8> = if s_rgb { point.pixel_s_rgb() } else { point.pixel() };
             img.put_pixel(x, y, pixel);
         }
     }
@@ -69,8 +69,11 @@ fn main() {
 
     let mut out_filename: String = String::default();
     let mut img: RgbaImage = RgbaImage::default();
+
     let mut position_buf: Vec<Position> = vec![];
     let mut color_buf: Vec<Color> = vec![];
+    let mut element_buf: Vec<usize> = vec![];
+
     let mut s_rgb: bool = false;
 
     let mut line_no = 0;
@@ -113,33 +116,17 @@ fn main() {
                             eprintln!("{}", err);
                         }
                     }
-                    "depth" => {
-
-                    }
+                    "depth" => {}
                     "s_rgb" => {
                         s_rgb = true;
                     }
-                    "hyp" => {
-
-                    }
-                    "fsaa" => {
-
-                    }
-                    "cull" => {
-
-                    }
-                    "decals" => {
-
-                    }
-                    "frustum" => {
-
-                    }
-                    "texture" => {
-
-                    }
-                    "uniformMatrix" => {
-
-                    }
+                    "hyp" => {}
+                    "fsaa" => {}
+                    "cull" => {}
+                    "decals" => {}
+                    "frustum" => {}
+                    "texture" => {}
+                    "uniformMatrix" => {}
                     "position" => {
                         if let Ok(size) = fields[1].parse::<usize>() {
                             if !(1..=4).contains(&size) {
@@ -182,14 +169,12 @@ fn main() {
                             invalid = true;
                         }
                     }
-                    "texcoord" => {
-
-                    }
-                    "pointsize" => {
-
-                    }
+                    "texcoord" => {}
+                    "pointsize" => {}
                     "elements" => {
-
+                        if let Ok(elements) = read_args::<usize>(fields[1..].iter()) {
+                            element_buf = elements;
+                        }
                     }
                     "drawArraysTriangles" => {
                         if let Ok(args) = read_args::<usize>(fields[1..].iter()) {
@@ -214,11 +199,38 @@ fn main() {
                         }
                     }
                     "drawElementsTriangles" => {
+                        if let Ok(args) = read_args::<usize>(fields[1..].iter()) {
+                            let count = args[0];
+                            let offset = args[1];
 
-                    }
-                    "drawArraysPoints" => {
+                            for j in (0..=count - 3).step_by(3) {
+                                let mut temp_position_buf = vec![];
+                                let mut temp_color_buf = vec![];
 
+                                for k in 0..3 {
+                                    temp_position_buf.push(position_buf[element_buf[offset + j + k]]);
+                                    if element_buf[offset + j + k] < color_buf.len() {
+                                        temp_color_buf.push(color_buf[element_buf[offset + j + k]]);
+                                    }
+                                }
+
+                                let mut points: Points<8> = merge_data(temp_position_buf, temp_color_buf, 0..3);
+                                points.divide_by_w(W);
+                                points.transform_to_viewport(X, Y, img.width(), img.height());
+                                points.undivide_by_w(W, &Box::from([R, G, B, A]));
+
+                                let triangle = scanline(points[0], points[1], points[2]);
+                                draw_points(&mut img, triangle, s_rgb);
+                            }
+
+                            if let Err(err) = img.save(out_filename.clone()) {
+                                eprintln!("{}", err);
+                            }
+                        } else {
+                            invalid = true;
+                        }
                     }
+                    "drawArraysPoints" => {}
                     _ => {}
                 }
             }
