@@ -3,8 +3,8 @@ mod rasterize;
 mod point;
 mod position;
 mod axis;
+mod depth_image;
 
-use image::{Rgba, RgbaImage};
 use std::{env, io};
 use std::fs::{File};
 use std::io::{BufRead};
@@ -12,9 +12,11 @@ use std::ops::Range;
 use std::path::Path;
 use std::slice::Iter;
 use std::str::FromStr;
-use crate::axis::axis::{X, Y, W, R, G, B, A, S, T};
+use image::{Rgba, RgbaImage};
+use crate::axis::axis::{X, Y, Z, W, R, G, B, A, S, T};
 
 use crate::color::Color;
+use crate::depth_image::Image;
 use crate::point::{Point, Points};
 use crate::position::Position;
 use crate::rasterize::scanline;
@@ -47,7 +49,7 @@ fn merge_data(position_buf: Vec<Position>, color_buf: Vec<Color>, range: Range<u
     return Points::<8>(result);
 }
 
-fn draw_points(img: &mut RgbaImage, points: Points<8>, s_rgb: bool) {
+fn draw_points(img: &mut Image, points: Points<8>, s_rgb: bool, depth: bool) {
     for point in points {
         if point[X] < 0f64 || point[Y] < 0f64 {
             continue;
@@ -55,7 +57,9 @@ fn draw_points(img: &mut RgbaImage, points: Points<8>, s_rgb: bool) {
         let (x, y) = (point[X] as u32, point[Y] as u32);
         if x < img.width() && y < img.height() {
             let pixel: Rgba<u8> = if s_rgb { point.pixel_s_rgb() } else { point.pixel() };
-            img.put_pixel(x, y, pixel);
+            if !depth || point[Z] < img.depth(x, y) {
+                img.put_pixel(x, y, pixel, if depth { Some(point[Z]) } else { None });
+            }
         }
     }
 }
@@ -68,13 +72,14 @@ fn main() {
     let in_filename = env::args().nth(1).unwrap();
 
     let mut out_filename: String = String::default();
-    let mut img: RgbaImage = RgbaImage::default();
+    let mut img: Image = Image::default();
 
     let mut position_buf: Vec<Position> = vec![];
     let mut color_buf: Vec<Color> = vec![];
     let mut element_buf: Vec<usize> = vec![];
 
     let mut s_rgb: bool = false;
+    let mut depth: bool = false;
 
     let mut line_no = 0;
     let mut invalid = false;
@@ -109,14 +114,16 @@ fn main() {
                             continue;
                         }
 
-                        img = RgbaImage::from_pixel(dim[0], dim[1], Rgba([0, 0, 0, 0]));
+                        img = Image::from_pixel(dim[0], dim[1], Rgba([0, 0, 0, 0]));
 
                         out_filename = String::from(fields[3]);
                         if let Err(err) = img.save(out_filename.clone()) {
                             eprintln!("{}", err);
                         }
                     }
-                    "depth" => {}
+                    "depth" => {
+                        depth = true;
+                    }
                     "s_rgb" => {
                         s_rgb = true;
                     }
@@ -188,7 +195,7 @@ fn main() {
                                 points.undivide_by_w(W, &Box::from([R, G, B, A]));
 
                                 let triangle = scanline(points[0], points[1], points[2]);
-                                draw_points(&mut img, triangle, s_rgb);
+                                draw_points(&mut img, triangle, s_rgb, depth);
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {
@@ -220,7 +227,7 @@ fn main() {
                                 points.undivide_by_w(W, &Box::from([R, G, B, A]));
 
                                 let triangle = scanline(points[0], points[1], points[2]);
-                                draw_points(&mut img, triangle, s_rgb);
+                                draw_points(&mut img, triangle, s_rgb, depth);
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {
