@@ -1,14 +1,13 @@
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, Range, Sub};
-use std::vec::IntoIter;
-use blend_srgb::convert::rgb_to_srgb;
-use image::Rgba;
-use crate::axis::axis::{R, G, B, A, W};
+use crate::axis::axis::{A, B, G, R, W, X, Y, Z};
 use crate::color::Color;
 use crate::position::Position;
+use blend_srgb::convert::rgb_to_srgb;
+use image::Rgba;
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, Range, Sub};
 
 #[derive(Clone)]
-pub(crate) struct Points<const DIM: usize> (pub(crate) Vec<Point<DIM>>);
+pub(crate) struct Points<const DIM: usize>(pub(crate) Vec<Point<DIM>>);
 
 impl<const DIM: usize> Index<usize> for Points<DIM> {
     type Output = Point<DIM>;
@@ -20,7 +19,7 @@ impl<const DIM: usize> Index<usize> for Points<DIM> {
 
 impl<const DIM: usize> IntoIterator for Points<DIM> {
     type Item = Point<DIM>;
-    type IntoIter = IntoIter<Point<DIM>>;
+    type IntoIter = std::vec::IntoIter<Point<DIM>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -32,25 +31,38 @@ impl<const DIM: usize> Points<DIM> {
         self.0.append(other);
     }
 
+    pub(crate) fn push(&mut self, value: Point<DIM>) {
+        self.0.push(value);
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub(crate) fn divide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
+    pub(crate) fn is_back_face(&self) -> bool {
+        assert_eq!(self.len(), 3);
+
+        // Signed area of triangle 0-1-2 with counter-clockwise == positive
+        return (self[1][X] - self[0][X]) * (self[2][Y] - self[0][Y])
+            - (self[2][X] - self[0][X]) * (self[1][Y] - self[0][Y])
+            > 0f64;
+    }
+
+    pub(crate) fn divide_by_w(&mut self, fields: &Box<[usize]>) {
         for point in &mut self.0 {
-            point.divide_by_w(wd, fields);
+            point.divide_by_w(fields);
         }
     }
 
-    pub(crate) fn transform_to_viewport(&mut self, xd: usize, yd: usize, width: u32, height: u32) {
+    pub(crate) fn transform_to_viewport(&mut self, width: u32, height: u32) {
         for point in &mut self.0 {
-            point.transform_to_viewport(xd, yd, width, height);
+            point.transform_to_viewport(width, height);
         }
     }
 
-    pub(crate) fn undivide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
+    pub(crate) fn undivide_by_w(&mut self, fields: &Box<[usize]>) {
         for point in &mut self.0 {
-            point.undivide_by_w(wd, fields);
+            point.undivide_by_w(fields);
         }
     }
 }
@@ -62,7 +74,16 @@ pub(crate) struct Point<const DIM: usize> {
 
 impl From<(Position, Color)> for Point<8> {
     fn from(value: (Position, Color)) -> Self {
-        Self { data: <[f64; 8]>::try_from(Point::from(value.0).data().into_iter().chain(Point::from(value.1).data().into_iter()).collect::<Vec<f64>>()).unwrap() }
+        Self {
+            data: <[f64; 8]>::try_from(
+                Point::from(value.0)
+                    .data()
+                    .into_iter()
+                    .chain(Point::from(value.1).data().into_iter())
+                    .collect::<Vec<f64>>(),
+            )
+            .unwrap(),
+        }
     }
 }
 
@@ -103,7 +124,15 @@ impl<const DIM: usize> Point<DIM> {
     }
 
     pub(crate) fn pixel(self) -> Rgba<u8> {
-        Rgba(<[u8; 4]>::try_from(self.data[R..=A].iter().map(|&a| (a * 255f64) as u8).collect::<Vec<u8>>()).unwrap())
+        Rgba(
+            <[u8; 4]>::try_from(
+                self.data[R..=A]
+                    .iter()
+                    .map(|&a| (a * 255f64) as u8)
+                    .collect::<Vec<u8>>(),
+            )
+            .unwrap(),
+        )
     }
 
     pub(crate) fn pixel_s_rgb(self) -> Rgba<u8> {
@@ -113,27 +142,27 @@ impl<const DIM: usize> Point<DIM> {
         Rgba([r, g, b, (self.data[A] * 255f64) as u8])
     }
 
-    pub(crate) fn divide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
-        let w = self[wd];
+    pub(crate) fn divide_by_w(&mut self, fields: &Box<[usize]>) {
+        let w = self[W];
         for &field in fields.into_iter() {
             self[field] /= w;
         }
-        self[wd] = 1f64 / w;
+        self[W] = 1f64 / w;
     }
 
-    pub(crate) fn transform_to_viewport(&mut self, xd: usize, yd: usize, width: u32, height: u32) {
-        let x = self[xd];
-        let y = self[yd];
-        self[xd] = (x + 1f64) * width as f64 / 2f64;
-        self[yd] = (y + 1f64) * height as f64 / 2f64;
+    pub(crate) fn transform_to_viewport(&mut self, width: u32, height: u32) {
+        let x = self[X];
+        let y = self[Y];
+        self[X] = (x + 1f64) * width as f64 / 2f64;
+        self[Y] = (y + 1f64) * height as f64 / 2f64;
     }
 
-    pub(crate) fn undivide_by_w(&mut self, wd: usize, fields: &Box<[usize]>) {
-        let un_w = self[wd];
+    pub(crate) fn undivide_by_w(&mut self, fields: &Box<[usize]>) {
+        let un_w = self[W];
         for &field in fields.into_iter() {
             self[field] /= un_w;
         }
-        self[wd] = 1f64 / un_w;
+        self[W] = 1f64 / un_w;
     }
 }
 
@@ -163,7 +192,16 @@ impl<const DIM: usize> Sub for Point<DIM> {
     type Output = Point<DIM>;
 
     fn sub(self, rhs: Point<DIM>) -> Self::Output {
-        return Self::Output { data: <[f64; DIM]>::try_from((self.data).into_iter().zip(rhs.data).map(|(a, b)| a - b).collect::<Vec<f64>>()).unwrap() };
+        return Self::Output {
+            data: <[f64; DIM]>::try_from(
+                (self.data)
+                    .into_iter()
+                    .zip(rhs.data)
+                    .map(|(a, b)| a - b)
+                    .collect::<Vec<f64>>(),
+            )
+            .unwrap(),
+        };
     }
 }
 
@@ -171,7 +209,9 @@ impl<const DIM: usize> Div<f64> for Point<DIM> {
     type Output = Self;
 
     fn div(self, rhs: f64) -> Self::Output {
-        return Self { data: self.data.map(|a| a / rhs) };
+        return Self {
+            data: self.data.map(|a| a / rhs),
+        };
     }
 }
 
@@ -185,7 +225,9 @@ impl<const DIM: usize> Mul<Point<DIM>> for f64 {
     type Output = Point<DIM>;
 
     fn mul(self, rhs: Point<DIM>) -> Self::Output {
-        return Self::Output { data: rhs.data.map(|a| a * self) };
+        return Self::Output {
+            data: rhs.data.map(|a| a * self),
+        };
     }
 }
 
@@ -193,7 +235,16 @@ impl<const DIM: usize> Add<Point<DIM>> for Point<DIM> {
     type Output = Point<DIM>;
 
     fn add(self, rhs: Point<DIM>) -> Self::Output {
-        return Self::Output { data: <[f64; DIM]>::try_from(self.data.into_iter().zip(rhs.data).map(|(a, b)| a + b).collect::<Vec<f64>>()).unwrap() };
+        return Self::Output {
+            data: <[f64; DIM]>::try_from(
+                self.data
+                    .into_iter()
+                    .zip(rhs.data)
+                    .map(|(a, b)| a + b)
+                    .collect::<Vec<f64>>(),
+            )
+            .unwrap(),
+        };
     }
 }
 

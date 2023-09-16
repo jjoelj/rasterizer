@@ -1,19 +1,19 @@
+mod axis;
 mod color;
-mod rasterize;
+mod depth_image;
 mod point;
 mod position;
-mod axis;
-mod depth_image;
+mod rasterize;
 
-use std::{env, io};
-use std::fs::{File};
-use std::io::{BufRead};
+use crate::axis::axis::{A, B, G, R, S, T, X, Y, Z};
+use image::Rgba;
+use std::fs::File;
+use std::io::BufRead;
 use std::ops::Range;
 use std::path::Path;
 use std::slice::Iter;
 use std::str::FromStr;
-use image::{Rgba, RgbaImage};
-use crate::axis::axis::{X, Y, Z, W, R, G, B, A, S, T};
+use std::{env, io};
 
 use crate::color::Color;
 use crate::depth_image::Image;
@@ -21,12 +21,18 @@ use crate::point::{Point, Points};
 use crate::position::Position;
 use crate::rasterize::scanline;
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>> where P: AsRef<Path>, {
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+where
+    P: AsRef<Path>,
+{
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
-fn read_args<P>(fields: Iter<&str>) -> Result<Vec<P>, <P as FromStr>::Err> where P: FromStr {
+fn read_args<P>(fields: Iter<&str>) -> Result<Vec<P>, <P as FromStr>::Err>
+where
+    P: FromStr,
+{
     let mut result: Vec<P> = vec![];
     for field in fields {
         let res = field.parse::<P>();
@@ -64,23 +70,29 @@ fn draw_points(img: &mut Image, points: Points<8>, depth: bool, s_rgb: bool) {
     }
 }
 
-fn draw_triangle(mut img: &mut Image, points: &mut Points<8>, depth: bool, s_rgb: bool, hyp: bool) {
-
-    if hyp {
-        points.divide_by_w(W, &Box::from([X, Y, Z, R, G, B, A]));
-    } else {
-        points.divide_by_w(W, &Box::from([X, Y]));
+fn draw_triangle(mut img: &mut Image, points: &mut Points<8>, depth: bool, s_rgb: bool, hyp: bool, cull: bool) {
+    if cull && points.is_back_face() {
+        return;
     }
 
-    points.transform_to_viewport(X, Y, img.width(), img.height());
+    let mut triangles: Vec<Points<8>> = vec![];
+    triangles.push(points.clone());
 
-    let mut triangle = scanline(points[0], points[1], points[2]);
+    for mut triangle in triangles {
+        if hyp {
+            triangle.divide_by_w(&Box::from([X, Y, Z, R, G, B, A]));
+        } else {
+            triangle.divide_by_w(&Box::from([X, Y]));
+        }
 
-    if hyp {
-        triangle.undivide_by_w(W, &Box::from([Z, R, G, B, A]));
+        triangle.transform_to_viewport(img.width(), img.height());
+
+        if hyp {
+            triangle.undivide_by_w(&Box::from([Z, R, G, B, A]));
+        }
+
+        draw_points(&mut img, scanline(triangle[0], triangle[1], triangle[2]), depth, s_rgb);
     }
-
-    draw_points(&mut img, triangle, depth, s_rgb);
 }
 
 fn main() {
@@ -95,11 +107,17 @@ fn main() {
 
     let mut position_buf: Vec<Position> = vec![];
     let mut color_buf: Vec<Color> = vec![];
+    // let mut texcoord_buf = vec![];
+    // let mut pointsize_buf = vec![];
     let mut element_buf: Vec<usize> = vec![];
 
     let mut depth: bool = false;
     let mut s_rgb: bool = false;
     let mut hyp: bool = false;
+    // let mut fsaa:u8 = 0;
+    let mut cull: bool = false;
+    // let mut decals: bool = false;
+    // let mut frustum: bool = false;
 
     let mut line_no = 0;
     let mut invalid = false;
@@ -151,7 +169,9 @@ fn main() {
                         hyp = true;
                     }
                     "fsaa" => {}
-                    "cull" => {}
+                    "cull" => {
+                        cull = true;
+                    }
                     "decals" => {}
                     "frustum" => {}
                     "texture" => {}
@@ -183,7 +203,7 @@ fn main() {
 
                             color_buf.clear();
                             for j in (1..=args.len() - size).step_by(size) {
-                                let color = args[j..j+size].to_vec();
+                                let color = args[j..j + size].to_vec();
                                 color_buf.push(Color::new(color));
                             }
                         } else {
@@ -203,9 +223,10 @@ fn main() {
                             let count = args[1];
 
                             for j in (0..=count - 3).step_by(3) {
-                                let mut points: Points<8> = merge_data(position_buf.clone(), color_buf.clone(), first + j..first + j + 3);
+                                let mut points: Points<8> =
+                                    merge_data(position_buf.clone(), color_buf.clone(), first + j..first + j + 3);
 
-                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp);
+                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp, cull);
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {
@@ -233,7 +254,7 @@ fn main() {
 
                                 let mut points: Points<8> = merge_data(temp_position_buf, temp_color_buf, 0..3);
 
-                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp);
+                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp, cull);
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {

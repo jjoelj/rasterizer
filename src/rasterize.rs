@@ -1,6 +1,6 @@
-use std::mem::swap;
 use crate::axis::axis::{X, Y};
 use crate::point::{Point, Points};
+use std::mem::swap;
 
 fn dda_setup<const DIM: usize>(a: &mut Point<DIM>, b: &mut Point<DIM>, d: usize) -> (Point<DIM>, Point<DIM>) {
     let mut a_d = a[d];
@@ -44,7 +44,7 @@ fn dda_full<const DIM: usize>(mut a: Point<DIM>, mut b: Point<DIM>, d: usize) ->
 
 pub(crate) fn scanline<const DIM: usize>(p: Point<DIM>, q: Point<DIM>, r: Point<DIM>) -> Points<DIM> {
     let mut sorter = [p, q, r].clone();
-    sorter.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap());
+    sorter.sort_by(|a, b| a[Y].partial_cmp(&b[Y]).unwrap());
     let [t, m, b] = sorter;
 
     let mut result: Points<DIM> = Points::<DIM>(vec![]);
