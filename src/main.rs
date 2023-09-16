@@ -7,9 +7,11 @@ mod rasterize;
 
 use crate::axis::axis::{A, B, G, R, S, T, X, Y, Z};
 use image::Rgba;
+use palette::rgb::Rgb;
+use palette::Srgb;
 use std::fs::File;
 use std::io::BufRead;
-use std::ops::Range;
+use std::ops::{Deref, Range};
 use std::path::Path;
 use std::slice::Iter;
 use std::str::FromStr;
@@ -62,8 +64,38 @@ fn draw_points(img: &mut Image, points: Points<8>, depth: bool, s_rgb: bool) {
         }
         let (x, y) = (point[X] as u32, point[Y] as u32);
         if x < img.width() && y < img.height() {
-            let pixel: Rgba<u8> = if s_rgb { point.pixel_s_rgb() } else { point.pixel() };
+            let mut pixel: Rgba<f32> = point.pixel();
             if !depth || point[Z] < img.depth(x, y) {
+                let mut cur_pixel = img.get_pixel(x, y).clone();
+                if s_rgb {
+                    let rgb_pixel =
+                        Srgb::from_components((cur_pixel[0] / 255f32, cur_pixel[1] / 255f32, cur_pixel[2] / 255f32))
+                            .into_linear();
+                    cur_pixel[0] = rgb_pixel.red * 255f32;
+                    cur_pixel[1] = rgb_pixel.green * 255f32;
+                    cur_pixel[2] = rgb_pixel.blue * 255f32;
+                }
+
+                let [r_s, g_s, b_s, a_s] = pixel.0.map(|a| a / 255f32);
+                let [r_d, g_d, b_d, a_d] = cur_pixel.0.map(|a| a / 255f32);
+
+                let a = a_s + a_d * (1f32 - a_s);
+                let r = a_s / a * r_s + (1f32 - a_s) * a_d / a * r_d;
+                let g = a_s / a * g_s + (1f32 - a_s) * a_d / a * g_d;
+                let b = a_s / a * b_s + (1f32 - a_s) * a_d / a * b_d;
+                [pixel[0], pixel[1], pixel[2], pixel[3]] = [r, g, b, a].map(|a| a * 255f32);
+
+                if s_rgb {
+                    let srgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((
+                        pixel[0] / 255f32,
+                        pixel[1] / 255f32,
+                        pixel[2] / 255f32,
+                    )));
+                    pixel[0] = srgb_pixel.red * 255f32;
+                    pixel[1] = srgb_pixel.green * 255f32;
+                    pixel[2] = srgb_pixel.blue * 255f32;
+                }
+
                 img.put_pixel(x, y, pixel, if depth { Some(point[Z]) } else { None });
             }
         }
@@ -152,7 +184,7 @@ fn main() {
                             continue;
                         }
 
-                        img = Image::from_pixel(dim[0], dim[1], Rgba([0, 0, 0, 0]));
+                        img = Image::from_pixel(dim[0], dim[1], Rgba([0f32, 0f32, 0f32, 0f32]));
 
                         out_filename = String::from(fields[3]);
                         if let Err(err) = img.save(out_filename.clone()) {

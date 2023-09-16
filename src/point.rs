@@ -1,7 +1,6 @@
 use crate::axis::axis::{A, B, G, R, W, X, Y, Z};
 use crate::color::Color;
 use crate::position::Position;
-use blend_srgb::convert::rgb_to_srgb;
 use image::Rgba;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, Range, Sub};
@@ -123,23 +122,16 @@ impl<const DIM: usize> Point<DIM> {
         return self.data;
     }
 
-    pub(crate) fn pixel(self) -> Rgba<u8> {
+    pub(crate) fn pixel(self) -> Rgba<f32> {
         Rgba(
-            <[u8; 4]>::try_from(
+            <[f32; 4]>::try_from(
                 self.data[R..=A]
                     .iter()
-                    .map(|&a| (a * 255f64) as u8)
-                    .collect::<Vec<u8>>(),
+                    .map(|&a| a as f32 * 255f32)
+                    .collect::<Vec<f32>>(),
             )
             .unwrap(),
         )
-    }
-
-    pub(crate) fn pixel_s_rgb(self) -> Rgba<u8> {
-        let r = (rgb_to_srgb(self.data[R] as f32) * 255f32) as u8;
-        let g = (rgb_to_srgb(self.data[G] as f32) * 255f32) as u8;
-        let b = (rgb_to_srgb(self.data[B] as f32) * 255f32) as u8;
-        Rgba([r, g, b, (self.data[A] * 255f64) as u8])
     }
 
     pub(crate) fn divide_by_w(&mut self, fields: &Box<[usize]>) {
