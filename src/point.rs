@@ -1,4 +1,4 @@
-use crate::axis::axis::{A, B, G, R, W, X, Y, Z};
+use crate::axis::axis::{A, R, W, X, Y};
 use crate::color::Color;
 use crate::position::Position;
 use image::Rgba;

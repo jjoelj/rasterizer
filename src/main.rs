@@ -107,24 +107,21 @@ fn draw_triangle(mut img: &mut Image, points: &mut Points<8>, depth: bool, s_rgb
         return;
     }
 
-    let mut triangles: Vec<Points<8>> = vec![];
-    triangles.push(points.clone());
-
-    for mut triangle in triangles {
-        if hyp {
-            triangle.divide_by_w(&Box::from([X, Y, Z, R, G, B, A]));
-        } else {
-            triangle.divide_by_w(&Box::from([X, Y]));
-        }
-
-        triangle.transform_to_viewport(img.width(), img.height());
-
-        if hyp {
-            triangle.undivide_by_w(&Box::from([Z, R, G, B, A]));
-        }
-
-        draw_points(&mut img, scanline(triangle[0], triangle[1], triangle[2]), depth, s_rgb);
+    if hyp {
+        points.divide_by_w(&Box::from([X, Y, Z, R, G, B, A]));
+    } else {
+        points.divide_by_w(&Box::from([X, Y]));
     }
+
+    points.transform_to_viewport(img.width(), img.height());
+
+    let mut triangle = scanline(points[0], points[1], points[2]);
+
+    if hyp {
+        triangle.undivide_by_w(&Box::from([Z, R, G, B, A]));
+    }
+
+    draw_points(&mut img, triangle, depth, s_rgb);
 }
 
 fn main() {
