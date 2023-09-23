@@ -31,10 +31,6 @@ impl<const DIM: usize> Points<DIM> {
         self.0.append(other);
     }
 
-    pub(crate) fn push(&mut self, value: Point<DIM>) {
-        self.0.push(value);
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
