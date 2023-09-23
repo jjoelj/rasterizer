@@ -6,7 +6,8 @@ mod position;
 mod rasterize;
 
 use crate::axis::axis::{A, B, G, R, S, T, X, Y, Z};
-use image::Rgba;
+use image::{io::Reader as ImageReader, Rgba, Rgba32FImage};
+use ndarray::{arr2, Array2};
 use palette::rgb::Rgb;
 use palette::Srgb;
 use std::fs::File;
@@ -49,15 +50,49 @@ where
     return Ok(result);
 }
 
-fn merge_data(position_buf: Vec<Position>, color_buf: Vec<Color>, range: Range<usize>) -> Points<8> {
-    let mut result: Vec<Point<8>> = vec![];
+fn merge_data(
+    position_buf: Vec<Position>,
+    color_buf: Vec<Color>,
+    texcoord_buf: Vec<[f64; 2]>,
+    range: Range<usize>,
+) -> Points<10> {
+    let mut result: Vec<Point<10>> = vec![];
     for j in range {
-        result.push(Point::from((position_buf[j], color_buf[j])));
+        let color = if j < color_buf.len() {
+            color_buf[j]
+        } else {
+            Color::new(vec![0f64; 4])
+        };
+        let texcoord = if j < texcoord_buf.len() {
+            texcoord_buf[j]
+        } else {
+            [0f64; 2]
+        };
+        result.push(Point::from((position_buf[j], color, texcoord)));
     }
-    return Points::<8>(result);
+    return Points::<10>(result);
 }
 
-fn draw_points(img: &mut Image, points: Points<8>, depth: bool, s_rgb: bool) {
+fn overlay_pixels(cur_pixel: Rgba<f32>, pixel: Rgba<f32>) -> [f32; 4] {
+    let [r_s, g_s, b_s, a_s] = pixel.0.map(|a| a / 255f32);
+    let [r_d, g_d, b_d, a_d] = cur_pixel.0.map(|a| a / 255f32);
+
+    let a = a_s + a_d * (1f32 - a_s);
+    let r = a_s / a * r_s + (1f32 - a_s) * a_d / a * r_d;
+    let g = a_s / a * g_s + (1f32 - a_s) * a_d / a * g_d;
+    let b = a_s / a * b_s + (1f32 - a_s) * a_d / a * b_d;
+
+    return [r, g, b, a].map(|a| a * 255f32);
+}
+
+fn draw_points(
+    img: &mut Image,
+    points: Points<10>,
+    texture: &Option<Rgba32FImage>,
+    depth: bool,
+    s_rgb: bool,
+    decals: bool,
+) {
     for point in points {
         if point[X] < 0f64 || point[Y] < 0f64 {
             continue;
@@ -76,14 +111,23 @@ fn draw_points(img: &mut Image, points: Points<8>, depth: bool, s_rgb: bool) {
                     cur_pixel[2] = rgb_pixel.blue * 255f32;
                 }
 
-                let [r_s, g_s, b_s, a_s] = pixel.0.map(|a| a / 255f32);
-                let [r_d, g_d, b_d, a_d] = cur_pixel.0.map(|a| a / 255f32);
+                [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(cur_pixel, pixel);
 
-                let a = a_s + a_d * (1f32 - a_s);
-                let r = a_s / a * r_s + (1f32 - a_s) * a_d / a * r_d;
-                let g = a_s / a * g_s + (1f32 - a_s) * a_d / a * g_d;
-                let b = a_s / a * b_s + (1f32 - a_s) * a_d / a * b_d;
-                [pixel[0], pixel[1], pixel[2], pixel[3]] = [r, g, b, a].map(|a| a * 255f32);
+                if let Some(texture) = texture {
+                    let x = (point[S] * texture.width() as f64) as u32;
+                    let y = (point[T] * texture.height() as f64) as u32;
+                    let mut temp = texture.get_pixel(x, y).clone();
+                    let texel = Srgb::from_components((temp[0], temp[1], temp[2])).into_linear();
+                    temp[0] = texel.red * 255f32;
+                    temp[1] = texel.green * 255f32;
+                    temp[2] = texel.blue * 255f32;
+                    temp[3] *= 255f32;
+                    if decals {
+                        [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(pixel, temp);
+                    } else {
+                        pixel = temp;
+                    }
+                }
 
                 if s_rgb {
                     let srgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((
@@ -102,13 +146,25 @@ fn draw_points(img: &mut Image, points: Points<8>, depth: bool, s_rgb: bool) {
     }
 }
 
-fn draw_triangle(mut img: &mut Image, points: &mut Points<8>, depth: bool, s_rgb: bool, hyp: bool, cull: bool) {
+fn draw_triangle(
+    mut img: &mut Image,
+    points: &mut Points<10>,
+    uniform_matrix: &Array2<f64>,
+    texture: &Option<Rgba32FImage>,
+    depth: bool,
+    s_rgb: bool,
+    hyp: bool,
+    cull: bool,
+    decals: bool,
+) {
+    points.multiply_by_matrix(&uniform_matrix);
+
     if cull && points.is_back_face() {
         return;
     }
 
     if hyp {
-        points.divide_by_w(&Box::from([X, Y, Z, R, G, B, A]));
+        points.divide_by_w(&Box::from([X, Y, Z, R, G, B, A, S, T]));
     } else {
         points.divide_by_w(&Box::from([X, Y]));
     }
@@ -118,10 +174,12 @@ fn draw_triangle(mut img: &mut Image, points: &mut Points<8>, depth: bool, s_rgb
     let mut triangle = scanline(points[0], points[1], points[2]);
 
     if hyp {
-        triangle.undivide_by_w(&Box::from([Z, R, G, B, A]));
+        triangle.undivide_by_w(&Box::from([Z, R, G, B, A, S, T]));
     }
 
-    draw_points(&mut img, triangle, depth, s_rgb);
+    triangle.wrap_texcoords();
+
+    draw_points(&mut img, triangle, texture, depth, s_rgb, decals);
 }
 
 fn main() {
@@ -134,9 +192,11 @@ fn main() {
     let mut out_filename: String = String::default();
     let mut img: Image = Image::default();
 
+    let mut texture: Option<Rgba32FImage> = None;
+
     let mut position_buf: Vec<Position> = vec![];
     let mut color_buf: Vec<Color> = vec![];
-    // let mut texcoord_buf = vec![];
+    let mut texcoord_buf: Vec<[f64; 2]> = vec![];
     // let mut pointsize_buf = vec![];
     let mut element_buf: Vec<usize> = vec![];
 
@@ -145,8 +205,10 @@ fn main() {
     let mut hyp: bool = false;
     // let mut fsaa:u8 = 0;
     let mut cull: bool = false;
-    // let mut decals: bool = false;
+    let mut decals: bool = false;
     // let mut frustum: bool = false;
+
+    let mut uniform_matrix: Array2<f64> = Array2::eye(4);
 
     let mut line_no = 0;
     let mut invalid = false;
@@ -201,10 +263,29 @@ fn main() {
                     "cull" => {
                         cull = true;
                     }
-                    "decals" => {}
+                    "decals" => {
+                        decals = true;
+                    }
                     "frustum" => {}
-                    "texture" => {}
-                    "uniformMatrix" => {}
+                    "texture" => {
+                        let texture_filename = String::from(fields[1]);
+                        if let Ok(file) = ImageReader::open(texture_filename) {
+                            if let Ok(image) = file.decode() {
+                                texture = Some(image.into_rgba32f());
+                            } else {
+                                invalid = true;
+                            }
+                        } else {
+                            invalid = true;
+                        }
+                    }
+                    "uniformMatrix" => {
+                        if let Ok(args) = read_args::<f64>(fields[1..].iter()) {
+                            for j in 0..16 {
+                                uniform_matrix[[j % 4, j / 4]] = args[j];
+                            }
+                        }
+                    }
                     "position" => {
                         if let Ok(args) = read_args::<f64>(fields[1..].iter()) {
                             let size = args[0] as usize;
@@ -239,7 +320,23 @@ fn main() {
                             invalid = true;
                         }
                     }
-                    "texcoord" => {}
+                    "texcoord" => {
+                        if let Ok(args) = read_args::<f64>(fields[1..].iter()) {
+                            let size = args[0] as usize;
+                            if size != 2 {
+                                invalid = true;
+                                continue;
+                            }
+
+                            texcoord_buf.clear();
+                            for j in (1..=args.len() - 2).step_by(2) {
+                                let texcoord: [f64; 2] = [args[j], args[j + 1]];
+                                texcoord_buf.push(texcoord);
+                            }
+                        } else {
+                            invalid = true;
+                        }
+                    }
                     "pointsize" => {}
                     "elements" => {
                         if let Ok(elements) = read_args::<usize>(fields[1..].iter()) {
@@ -252,10 +349,24 @@ fn main() {
                             let count = args[1];
 
                             for j in (0..=count - 3).step_by(3) {
-                                let mut points: Points<8> =
-                                    merge_data(position_buf.clone(), color_buf.clone(), first + j..first + j + 3);
+                                let mut points: Points<10> = merge_data(
+                                    position_buf.clone(),
+                                    color_buf.clone(),
+                                    texcoord_buf.clone(),
+                                    first + j..first + j + 3,
+                                );
 
-                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp, cull);
+                                draw_triangle(
+                                    &mut img,
+                                    &mut points,
+                                    &uniform_matrix,
+                                    &texture,
+                                    depth,
+                                    s_rgb,
+                                    hyp,
+                                    cull,
+                                    decals,
+                                );
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {
@@ -273,17 +384,32 @@ fn main() {
                             for j in (0..=count - 3).step_by(3) {
                                 let mut temp_position_buf = vec![];
                                 let mut temp_color_buf = vec![];
+                                let mut temp_texcoord_buf = vec![];
 
                                 for k in 0..3 {
                                     temp_position_buf.push(position_buf[element_buf[offset + j + k]]);
                                     if element_buf[offset + j + k] < color_buf.len() {
                                         temp_color_buf.push(color_buf[element_buf[offset + j + k]]);
                                     }
+                                    if element_buf[offset + j + k] < texcoord_buf.len() {
+                                        temp_texcoord_buf.push(texcoord_buf[element_buf[offset + j + k]]);
+                                    }
                                 }
 
-                                let mut points: Points<8> = merge_data(temp_position_buf, temp_color_buf, 0..3);
+                                let mut points: Points<10> =
+                                    merge_data(temp_position_buf, temp_color_buf, temp_texcoord_buf, 0..3);
 
-                                draw_triangle(&mut img, &mut points, depth, s_rgb, hyp, cull);
+                                draw_triangle(
+                                    &mut img,
+                                    &mut points,
+                                    &uniform_matrix,
+                                    &texture,
+                                    depth,
+                                    s_rgb,
+                                    hyp,
+                                    cull,
+                                    decals,
+                                );
                             }
 
                             if let Err(err) = img.save(out_filename.clone()) {

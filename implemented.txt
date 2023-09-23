@@ -3,3 +3,9 @@ depth
 gamma
 hyperbolic
 cull
+alpha
+matrix
+position23
+textures
+
+decal

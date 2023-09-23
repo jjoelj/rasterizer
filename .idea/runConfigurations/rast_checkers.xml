@@ -1,8 +1,8 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="rast-checkers" type="MAKEFILE_TARGET_RUN_CONFIGURATION" factoryName="Makefile">
-    <makefile filename="$PROJECT_DIR$/Makefile" target="build, run" workingDirectory="$PROJECT_DIR$" arguments="">
+    <makefile filename="$PROJECT_DIR$/Makefile" target="build, run" workingDirectory="$PROJECT_DIR$/input" arguments="">
       <envs>
-        <env name="file" value="input/rast-checkers.txt" />
+        <env name="file" value="rast-checkers.txt" />
       </envs>
     </makefile>
     <method v="2" />

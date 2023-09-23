@@ -1,7 +1,8 @@
-use crate::axis::axis::{A, R, W, X, Y};
+use crate::axis::axis::{A, R, S, T, W, X, Y, Z};
 use crate::color::Color;
 use crate::position::Position;
 use image::Rgba;
+use ndarray::{arr2, Array2};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, Range, Sub};
 
@@ -47,6 +48,12 @@ impl<const DIM: usize> Points<DIM> {
             > 0f64;
     }
 
+    pub(crate) fn multiply_by_matrix(&mut self, uniform_matrix: &Array2<f64>) {
+        for point in &mut self.0 {
+            point.multiply_by_matrix(uniform_matrix);
+        }
+    }
+
     pub(crate) fn divide_by_w(&mut self, fields: &Box<[usize]>) {
         for point in &mut self.0 {
             point.divide_by_w(fields);
@@ -56,6 +63,12 @@ impl<const DIM: usize> Points<DIM> {
     pub(crate) fn transform_to_viewport(&mut self, width: u32, height: u32) {
         for point in &mut self.0 {
             point.transform_to_viewport(width, height);
+        }
+    }
+
+    pub(crate) fn wrap_texcoords(&mut self) {
+        for point in &mut self.0 {
+            point.wrap_texcoords();
         }
     }
 
@@ -71,14 +84,15 @@ pub(crate) struct Point<const DIM: usize> {
     data: [f64; DIM],
 }
 
-impl From<(Position, Color)> for Point<8> {
-    fn from(value: (Position, Color)) -> Self {
+impl From<(Position, Color, [f64; 2])> for Point<10> {
+    fn from(value: (Position, Color, [f64; 2])) -> Self {
         Self {
-            data: <[f64; 8]>::try_from(
+            data: <[f64; 10]>::try_from(
                 Point::from(value.0)
                     .data()
                     .into_iter()
                     .chain(Point::from(value.1).data().into_iter())
+                    .chain(value.2)
                     .collect::<Vec<f64>>(),
             )
             .unwrap(),
@@ -118,10 +132,6 @@ impl<const DIM: usize> Point<DIM> {
         Self { data: [0f64; DIM] }
     }
 
-    pub(crate) fn data(self) -> [f64; DIM] {
-        return self.data;
-    }
-
     pub(crate) fn pixel(self) -> Rgba<f32> {
         Rgba(
             <[f32; 4]>::try_from(
@@ -134,7 +144,20 @@ impl<const DIM: usize> Point<DIM> {
         )
     }
 
-    pub(crate) fn divide_by_w(&mut self, fields: &Box<[usize]>) {
+    fn data(self) -> [f64; DIM] {
+        return self.data;
+    }
+
+    fn multiply_by_matrix(&mut self, uniform_matrix: &Array2<f64>) {
+        let temp: Array2<f64> = arr2(&[[self[X]], [self[Y]], [self[Z]], [self[W]]]);
+        let result = uniform_matrix.dot(&temp);
+        self[X] = result[[0, 0]];
+        self[Y] = result[[1, 0]];
+        self[Z] = result[[2, 0]];
+        self[W] = result[[3, 0]];
+    }
+
+    fn divide_by_w(&mut self, fields: &Box<[usize]>) {
         let w = self[W];
         for &field in fields.into_iter() {
             self[field] /= w;
@@ -142,14 +165,21 @@ impl<const DIM: usize> Point<DIM> {
         self[W] = 1f64 / w;
     }
 
-    pub(crate) fn transform_to_viewport(&mut self, width: u32, height: u32) {
+    fn transform_to_viewport(&mut self, width: u32, height: u32) {
         let x = self[X];
         let y = self[Y];
         self[X] = (x + 1f64) * width as f64 / 2f64;
         self[Y] = (y + 1f64) * height as f64 / 2f64;
     }
 
-    pub(crate) fn undivide_by_w(&mut self, fields: &Box<[usize]>) {
+    fn wrap_texcoords(&mut self) {
+        let s = self[S] - self[S].floor();
+        let t = self[T] - self[T].floor();
+        self[S] = s;
+        self[T] = t;
+    }
+
+    fn undivide_by_w(&mut self, fields: &Box<[usize]>) {
         let un_w = self[W];
         for &field in fields.into_iter() {
             self[field] /= un_w;
