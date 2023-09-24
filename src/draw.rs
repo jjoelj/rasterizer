@@ -1,21 +1,22 @@
-use crate::axis::axis::{A, B, G, R, S, T, X, Y, Z};
-use crate::depth_image::DepthImage;
-use crate::point::{Point, Points};
-use crate::rasterize::{square, triangle};
 use image::{Rgba, Rgba32FImage};
 use ndarray::Array2;
 use palette::Srgb;
 
+use crate::axis::axis::{A, B, G, R, S, T, X, Y, Z};
+use crate::depth_image::DepthImage;
+use crate::point::{Point, Points};
+use crate::rasterize::{square, triangle};
+
 fn overlay_pixels(cur_pixel: Rgba<f32>, pixel: Rgba<f32>) -> [f32; 4] {
-    let [r_s, g_s, b_s, a_s] = pixel.0.map(|a| a / 255f32);
-    let [r_d, g_d, b_d, a_d] = cur_pixel.0.map(|a| a / 255f32);
+    let [r_s, g_s, b_s, a_s] = pixel.0;
+    let [r_d, g_d, b_d, a_d] = cur_pixel.0;
 
     let a = a_s + a_d * (1f32 - a_s);
     let r = a_s / a * r_s + (1f32 - a_s) * a_d / a * r_d;
     let g = a_s / a * g_s + (1f32 - a_s) * a_d / a * g_d;
     let b = a_s / a * b_s + (1f32 - a_s) * a_d / a * b_d;
 
-    return [r, g, b, a].map(|a| a * 255f32);
+    return [r, g, b, a];
 }
 
 struct Draw<const DIM: usize>();
@@ -41,14 +42,15 @@ impl<const DIM: usize> Draw<DIM> {
                     [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(cur_pixel, pixel);
 
                     if let Some(texture) = texture {
-                        let x = (point[S] * texture.width() as f64) as u32;
-                        let y = (point[T] * texture.height() as f64) as u32;
-                        let mut temp = texture.get_pixel(x, y).clone();
-                        let texel = Srgb::from_components((temp[0], temp[1], temp[2])).into_linear();
-                        temp[0] = texel.red * 255f32;
-                        temp[1] = texel.green * 255f32;
-                        temp[2] = texel.blue * 255f32;
-                        temp[3] *= 255f32;
+                        let x = (point[S] * texture.width() as f64).rem_euclid(texture.width() as f64) as u32;
+                        let y = (point[T] * texture.height() as f64).rem_euclid(texture.height() as f64) as u32;
+                        let _temp = texture.get_pixel(x, y).clone();
+                        let mut temp: Rgba<f32> = Rgba([0f32; 4]);
+                        let texel = Srgb::from_components((_temp[0], _temp[1], _temp[2])).into_linear::<f32>();
+                        temp[0] = texel.red;
+                        temp[1] = texel.green;
+                        temp[2] = texel.blue;
+                        temp[3] = _temp[3];
                         if decals {
                             [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(pixel, temp);
                         } else {
@@ -92,8 +94,6 @@ pub(crate) fn draw_triangle(
     if hyp {
         triangle.undivide_by_w(&Box::from([Z, R, G, B, A, S, T]));
     }
-
-    triangle.wrap_texcoords();
 
     Draw::<10>::draw_points(&mut img, triangle, texture, depth, decals);
 }

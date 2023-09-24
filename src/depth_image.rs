@@ -103,14 +103,10 @@ impl DepthImage {
                 avg_a /= self.fsaa.pow(2) as f32;
 
                 if s_rgb {
-                    let s_rgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((
-                        avg_r / 255f32,
-                        avg_g / 255f32,
-                        avg_b / 255f32,
-                    )));
-                    avg_r = s_rgb_pixel.red * 255f32;
-                    avg_g = s_rgb_pixel.green * 255f32;
-                    avg_b = s_rgb_pixel.blue * 255f32;
+                    let s_rgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((avg_r, avg_g, avg_b)));
+                    avg_r = s_rgb_pixel.red;
+                    avg_g = s_rgb_pixel.green;
+                    avg_b = s_rgb_pixel.blue;
                 }
 
                 self.data.put_pixel(x, y, Rgba([avg_r, avg_g, avg_b, avg_a]));
@@ -123,7 +119,12 @@ impl DepthImage {
         let temp: RgbaImage = RgbaImage::from_vec(
             self.width,
             self.height,
-            self.data.clone().into_vec().iter().map(|&a| a as u8).collect(),
+            self.data
+                .clone()
+                .into_vec()
+                .iter()
+                .map(|&a| (a * 255f32) as u8)
+                .collect(),
         )
         .unwrap();
         temp.save(path)

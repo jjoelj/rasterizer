@@ -1,10 +1,12 @@
-use crate::axis::axis::{A, R, S, T, W, X, Y, Z};
-use crate::color::Color;
-use crate::position::Position;
-use image::Rgba;
-use ndarray::{arr2, Array2};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, Range, Sub};
+
+use image::Rgba;
+use ndarray::{arr2, Array2};
+
+use crate::axis::axis::{A, R, W, X, Y, Z};
+use crate::color::Color;
+use crate::position::Position;
 
 impl Points<10> {
     pub(crate) fn from(
@@ -92,12 +94,6 @@ impl<const DIM: usize> Points<DIM> {
         }
     }
 
-    pub(crate) fn wrap_texcoords(&mut self) {
-        for point in &mut self.0 {
-            point.wrap_texcoords();
-        }
-    }
-
     pub(crate) fn undivide_by_w(&mut self, fields: &Box<[usize]>) {
         for point in &mut self.0 {
             point.undivide_by_w(fields);
@@ -121,7 +117,7 @@ impl From<(Position, Color, [f64; 2])> for Point<10> {
                     .chain(value.2)
                     .collect::<Vec<f64>>(),
             )
-            .unwrap(),
+                .unwrap(),
         }
     }
 }
@@ -138,7 +134,7 @@ impl From<(Position, Color, [f64; 2], f64)> for Point<11> {
                     .chain([value.3])
                     .collect::<Vec<f64>>(),
             )
-            .unwrap(),
+                .unwrap(),
         }
     }
 }
@@ -176,15 +172,7 @@ impl<const DIM: usize> Point<DIM> {
     }
 
     pub(crate) fn pixel(self) -> Rgba<f32> {
-        Rgba(
-            <[f32; 4]>::try_from(
-                self.data[R..=A]
-                    .iter()
-                    .map(|&a| a as f32 * 255f32)
-                    .collect::<Vec<f32>>(),
-            )
-            .unwrap(),
-        )
+        Rgba(<[f32; 4]>::try_from(self.data[R..=A].iter().map(|&a| a as f32).collect::<Vec<f32>>()).unwrap())
     }
 
     fn data(self) -> [f64; DIM] {
@@ -213,11 +201,6 @@ impl<const DIM: usize> Point<DIM> {
         let y = self[Y];
         self[X] = (x + 1f64) * width as f64 / 2f64;
         self[Y] = (y + 1f64) * height as f64 / 2f64;
-    }
-
-    fn wrap_texcoords(&mut self) {
-        self[S] = self[S].rem_euclid(1f64);
-        self[T] = self[T].rem_euclid(1f64);
     }
 
     fn undivide_by_w(&mut self, fields: &Box<[usize]>) {
@@ -263,7 +246,7 @@ impl<const DIM: usize> Sub for Point<DIM> {
                     .map(|(a, b)| a - b)
                     .collect::<Vec<f64>>(),
             )
-            .unwrap(),
+                .unwrap(),
         };
     }
 }
@@ -306,7 +289,7 @@ impl<const DIM: usize> Add<Point<DIM>> for Point<DIM> {
                     .map(|(a, b)| a + b)
                     .collect::<Vec<f64>>(),
             )
-            .unwrap(),
+                .unwrap(),
         };
     }
 }

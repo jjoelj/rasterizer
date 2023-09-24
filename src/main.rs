@@ -1,3 +1,19 @@
+use std::{env, io};
+use std::fs::File;
+use std::io::BufRead;
+use std::path::Path;
+use std::slice::Iter;
+use std::str::FromStr;
+
+use image::{io::Reader as ImageReader, Rgba, Rgba32FImage};
+use ndarray::Array2;
+
+use crate::color::Color;
+use crate::depth_image::DepthImage;
+use crate::draw::{draw_point, draw_triangle};
+use crate::point::{Point, Points};
+use crate::position::Position;
+
 mod axis;
 mod color;
 mod depth_image;
@@ -6,32 +22,17 @@ mod point;
 mod position;
 mod rasterize;
 
-use image::{io::Reader as ImageReader, Rgba, Rgba32FImage};
-use ndarray::Array2;
-use std::fs::File;
-use std::io::BufRead;
-use std::path::Path;
-use std::slice::Iter;
-use std::str::FromStr;
-use std::{env, io};
-
-use crate::color::Color;
-use crate::depth_image::DepthImage;
-use crate::draw::{draw_point, draw_triangle};
-use crate::point::{Point, Points};
-use crate::position::Position;
-
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
+    where
+        P: AsRef<Path>,
 {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
 fn read_args<P>(fields: Iter<&str>) -> Result<Vec<P>, <P as FromStr>::Err>
-where
-    P: FromStr,
+    where
+        P: FromStr,
 {
     let mut result: Vec<P> = vec![];
     for field in fields {

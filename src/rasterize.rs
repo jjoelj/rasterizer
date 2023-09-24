@@ -1,6 +1,7 @@
+use std::mem::swap;
+
 use crate::axis::axis::{P, S, T, X, Y};
 use crate::point::{Point, Points};
-use std::mem::swap;
 
 fn dda_setup<const DIM: usize>(a: &mut Point<DIM>, b: &mut Point<DIM>, d: usize) -> (Point<DIM>, Point<DIM>) {
     let mut a_d = a[d];

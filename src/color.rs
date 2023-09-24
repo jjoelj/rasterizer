@@ -11,7 +11,12 @@ pub(crate) struct Color {
 impl Color {
     pub(crate) fn new(color: Vec<f64>) -> Self {
         let a = if color.len() > 3 { color[3] } else { 1f64 };
-        Self { r: color[0], g: color[1], b: color[2], a: a }
+        Self {
+            r: color[0],
+            g: color[1],
+            b: color[2],
+            a,
+        }
     }
 }
 
