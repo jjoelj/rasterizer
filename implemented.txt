@@ -7,5 +7,5 @@ alpha
 matrix
 position23
 textures
-
+points
 decal

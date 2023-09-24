@@ -10,7 +10,6 @@ use image::{io::Reader as ImageReader, Rgba, Rgba32FImage};
 use ndarray::Array2;
 use std::fs::File;
 use std::io::BufRead;
-use std::ops::Range;
 use std::path::Path;
 use std::slice::Iter;
 use std::str::FromStr;
@@ -18,7 +17,7 @@ use std::{env, io};
 
 use crate::color::Color;
 use crate::depth_image::Image;
-use crate::draw::draw_triangle;
+use crate::draw::{draw_point, draw_triangle};
 use crate::point::{Point, Points};
 use crate::position::Position;
 
@@ -48,29 +47,6 @@ where
     return Ok(result);
 }
 
-pub(crate) fn merge_data(
-    position_buf: Vec<Position>,
-    color_buf: Vec<Color>,
-    texcoord_buf: Vec<[f64; 2]>,
-    range: Range<usize>,
-) -> Points<10> {
-    let mut result: Vec<Point<10>> = vec![];
-    for j in range {
-        let color = if j < color_buf.len() {
-            color_buf[j]
-        } else {
-            Color::new(vec![0f64; 4])
-        };
-        let texcoord = if j < texcoord_buf.len() {
-            texcoord_buf[j]
-        } else {
-            [0f64; 2]
-        };
-        result.push(Point::from((position_buf[j], color, texcoord)));
-    }
-    return Points::<10>(result);
-}
-
 fn main() {
     if env::args().len() < 2 {
         return;
@@ -86,7 +62,7 @@ fn main() {
     let mut position_buf: Vec<Position> = vec![];
     let mut color_buf: Vec<Color> = vec![];
     let mut texcoord_buf: Vec<[f64; 2]> = vec![];
-    // let mut pointsize_buf = vec![];
+    let mut pointsize_buf: Vec<f64> = vec![];
     let mut element_buf: Vec<usize> = vec![];
 
     let mut depth: bool = false;
@@ -226,10 +202,24 @@ fn main() {
                             invalid = true;
                         }
                     }
-                    "pointsize" => {}
+                    "pointsize" => {
+                        if let Ok(args) = read_args::<f64>(fields[1..].iter()) {
+                            let size = args[0] as usize;
+                            if size != 1 {
+                                invalid = true;
+                                continue;
+                            }
+
+                            pointsize_buf = args[1..].to_vec();
+                        } else {
+                            invalid = true;
+                        }
+                    }
                     "elements" => {
                         if let Ok(elements) = read_args::<usize>(fields[1..].iter()) {
                             element_buf = elements;
+                        } else {
+                            invalid = true;
                         }
                     }
                     "drawArraysTriangles" => {
@@ -238,7 +228,7 @@ fn main() {
                             let count = args[1];
 
                             for j in (0..=count - 3).step_by(3) {
-                                let mut points: Points<10> = merge_data(
+                                let mut points: Points<10> = Points::<10>::from(
                                     position_buf.clone(),
                                     color_buf.clone(),
                                     texcoord_buf.clone(),
@@ -286,7 +276,7 @@ fn main() {
                                 }
 
                                 let mut points: Points<10> =
-                                    merge_data(temp_position_buf, temp_color_buf, temp_texcoord_buf, 0..3);
+                                    Points::<10>::from(temp_position_buf, temp_color_buf, temp_texcoord_buf, 0..3);
 
                                 draw_triangle(
                                     &mut img,
@@ -308,7 +298,33 @@ fn main() {
                             invalid = true;
                         }
                     }
-                    "drawArraysPoints" => {}
+                    "drawArraysPoints" => {
+                        if let Ok(args) = read_args::<usize>(fields[1..].iter()) {
+                            let first = args[0];
+                            let count = args[1];
+
+                            for j in first..first + count {
+                                let mut point: Point<11> = Point::<11>::from((
+                                    position_buf[j],
+                                    if j < color_buf.len() {
+                                        color_buf[j]
+                                    } else {
+                                        Color::new(vec![0f64; 4])
+                                    },
+                                    [0f64, 0f64], // No texcoords for points
+                                    pointsize_buf[j],
+                                ));
+
+                                draw_point(&mut img, &mut point, &uniform_matrix, &texture, depth, s_rgb, decals);
+                            }
+
+                            if let Err(err) = img.save(out_filename.clone()) {
+                                eprintln!("{}", err);
+                            }
+                        } else {
+                            invalid = true;
+                        }
+                    }
                     _ => {}
                 }
             }

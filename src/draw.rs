@@ -1,7 +1,7 @@
 use crate::axis::axis::{A, B, G, R, S, T, X, Y, Z};
 use crate::depth_image::Image;
-use crate::point::Points;
-use crate::rasterize::scanline;
+use crate::point::{Point, Points};
+use crate::rasterize::{square, triangle};
 use image::{Rgba, Rgba32FImage};
 use ndarray::Array2;
 use palette::rgb::Rgb;
@@ -19,62 +19,69 @@ fn overlay_pixels(cur_pixel: Rgba<f32>, pixel: Rgba<f32>) -> [f32; 4] {
     return [r, g, b, a].map(|a| a * 255f32);
 }
 
-fn draw_points(
-    img: &mut Image,
-    points: Points<10>,
-    texture: &Option<Rgba32FImage>,
-    depth: bool,
-    s_rgb: bool,
-    decals: bool,
-) {
-    for point in points {
-        if point[X] < 0f64 || point[Y] < 0f64 {
-            continue;
-        }
-        let (x, y) = (point[X] as u32, point[Y] as u32);
-        if x < img.width() && y < img.height() {
-            let mut pixel: Rgba<f32> = point.pixel();
-            if !depth || point[Z] < img.depth(x, y) {
-                let mut cur_pixel = img.get_pixel(x, y).clone();
-                if s_rgb {
-                    let rgb_pixel =
-                        Srgb::from_components((cur_pixel[0] / 255f32, cur_pixel[1] / 255f32, cur_pixel[2] / 255f32))
-                            .into_linear();
-                    cur_pixel[0] = rgb_pixel.red * 255f32;
-                    cur_pixel[1] = rgb_pixel.green * 255f32;
-                    cur_pixel[2] = rgb_pixel.blue * 255f32;
-                }
+struct Draw<const DIM: usize>();
 
-                [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(cur_pixel, pixel);
-
-                if let Some(texture) = texture {
-                    let x = (point[S] * texture.width() as f64) as u32;
-                    let y = (point[T] * texture.height() as f64) as u32;
-                    let mut temp = texture.get_pixel(x, y).clone();
-                    let texel = Srgb::from_components((temp[0], temp[1], temp[2])).into_linear();
-                    temp[0] = texel.red * 255f32;
-                    temp[1] = texel.green * 255f32;
-                    temp[2] = texel.blue * 255f32;
-                    temp[3] *= 255f32;
-                    if decals {
-                        [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(pixel, temp);
-                    } else {
-                        pixel = temp;
+impl<const DIM: usize> Draw<DIM> {
+    fn draw_points(
+        img: &mut Image,
+        points: Points<DIM>,
+        texture: &Option<Rgba32FImage>,
+        depth: bool,
+        s_rgb: bool,
+        decals: bool,
+    ) {
+        for point in points {
+            if point[X] < 0f64 || point[Y] < 0f64 {
+                continue;
+            }
+            let (x, y) = (point[X] as u32, point[Y] as u32);
+            if x < img.width() && y < img.height() {
+                let mut pixel: Rgba<f32> = point.pixel();
+                if !depth || point[Z] < img.depth(x, y) {
+                    let mut cur_pixel = img.get_pixel(x, y).clone();
+                    if s_rgb {
+                        let rgb_pixel = Srgb::from_components((
+                            cur_pixel[0] / 255f32,
+                            cur_pixel[1] / 255f32,
+                            cur_pixel[2] / 255f32,
+                        ))
+                        .into_linear();
+                        cur_pixel[0] = rgb_pixel.red * 255f32;
+                        cur_pixel[1] = rgb_pixel.green * 255f32;
+                        cur_pixel[2] = rgb_pixel.blue * 255f32;
                     }
-                }
 
-                if s_rgb {
-                    let srgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((
-                        pixel[0] / 255f32,
-                        pixel[1] / 255f32,
-                        pixel[2] / 255f32,
-                    )));
-                    pixel[0] = srgb_pixel.red * 255f32;
-                    pixel[1] = srgb_pixel.green * 255f32;
-                    pixel[2] = srgb_pixel.blue * 255f32;
-                }
+                    [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(cur_pixel, pixel);
 
-                img.put_pixel(x, y, pixel, if depth { Some(point[Z]) } else { None });
+                    if let Some(texture) = texture {
+                        let x = (point[S] * texture.width() as f64) as u32;
+                        let y = (point[T] * texture.height() as f64) as u32;
+                        let mut temp = texture.get_pixel(x, y).clone();
+                        let texel = Srgb::from_components((temp[0], temp[1], temp[2])).into_linear();
+                        temp[0] = texel.red * 255f32;
+                        temp[1] = texel.green * 255f32;
+                        temp[2] = texel.blue * 255f32;
+                        temp[3] *= 255f32;
+                        if decals {
+                            [pixel[0], pixel[1], pixel[2], pixel[3]] = overlay_pixels(pixel, temp);
+                        } else {
+                            pixel = temp;
+                        }
+                    }
+
+                    if s_rgb {
+                        let srgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((
+                            pixel[0] / 255f32,
+                            pixel[1] / 255f32,
+                            pixel[2] / 255f32,
+                        )));
+                        pixel[0] = srgb_pixel.red * 255f32;
+                        pixel[1] = srgb_pixel.green * 255f32;
+                        pixel[2] = srgb_pixel.blue * 255f32;
+                    }
+
+                    img.put_pixel(x, y, pixel, if depth { Some(point[Z]) } else { None });
+                }
             }
         }
     }
@@ -105,7 +112,7 @@ pub(crate) fn draw_triangle(
 
     points.transform_to_viewport(img.width(), img.height());
 
-    let mut triangle = scanline(points[0], points[1], points[2]);
+    let mut triangle = triangle(points[0], points[1], points[2]);
 
     if hyp {
         triangle.undivide_by_w(&Box::from([Z, R, G, B, A, S, T]));
@@ -113,5 +120,25 @@ pub(crate) fn draw_triangle(
 
     triangle.wrap_texcoords();
 
-    draw_points(&mut img, triangle, texture, depth, s_rgb, decals);
+    Draw::<10>::draw_points(&mut img, triangle, texture, depth, s_rgb, decals);
+}
+
+pub(crate) fn draw_point(
+    mut img: &mut Image,
+    point: &mut Point<11>,
+    uniform_matrix: &Array2<f64>,
+    texture: &Option<Rgba32FImage>,
+    depth: bool,
+    s_rgb: bool,
+    decals: bool,
+) {
+    point.multiply_by_matrix(&uniform_matrix);
+
+    point.divide_by_w(&Box::from([X, Y]));
+
+    point.transform_to_viewport(img.width(), img.height());
+
+    let square: Points<11> = square(*point);
+
+    Draw::<11>::draw_points(&mut img, square, texture, depth, s_rgb, decals);
 }

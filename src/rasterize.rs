@@ -1,4 +1,4 @@
-use crate::axis::axis::{X, Y};
+use crate::axis::axis::{P, S, T, X, Y};
 use crate::point::{Point, Points};
 use std::mem::swap;
 
@@ -42,12 +42,12 @@ fn dda_full<const DIM: usize>(mut a: Point<DIM>, mut b: Point<DIM>, d: usize) ->
     return result;
 }
 
-pub(crate) fn scanline<const DIM: usize>(p: Point<DIM>, q: Point<DIM>, r: Point<DIM>) -> Points<DIM> {
+pub(crate) fn triangle<const DIM: usize>(p: Point<DIM>, q: Point<DIM>, r: Point<DIM>) -> Points<DIM> {
     let mut sorter = [p, q, r].clone();
     sorter.sort_by(|a, b| a[Y].partial_cmp(&b[Y]).unwrap());
     let [t, m, b] = sorter;
 
-    let mut result: Points<DIM> = Points::<DIM>(vec![]);
+    let mut result: Points<DIM> = Points::<DIM>::default();
     let (mut p1, s1) = dda_setup(&mut t.clone(), &mut b.clone(), Y);
     let (mut p2, mut s2) = dda_setup(&mut t.clone(), &mut m.clone(), Y);
     while p1[Y] < m[Y] {
@@ -63,6 +63,42 @@ pub(crate) fn scanline<const DIM: usize>(p: Point<DIM>, q: Point<DIM>, r: Point<
         p1 += s1;
         p2 += s2;
     }
+
+    return result;
+}
+
+pub(crate) fn square<const DIM: usize>(center: Point<DIM>) -> Points<DIM> {
+    let mut result: Points<DIM> = Points::<DIM>::default();
+
+    let radius = center[P] / 2f64;
+
+    let mut top_left = center;
+    let mut top_right = center;
+    let mut bottom_left = center;
+    let mut bottom_right = center;
+
+    top_left[X] = center[X] - radius;
+    top_left[Y] = center[Y] - radius;
+    top_left[S] = 0f64;
+    top_left[T] = 0f64;
+
+    top_right[X] = center[X] + radius;
+    top_right[Y] = center[Y] - radius;
+    top_right[S] = 1f64;
+    top_right[T] = 0f64;
+
+    bottom_left[X] = center[X] - radius;
+    bottom_left[Y] = center[Y] + radius;
+    bottom_left[S] = 0f64;
+    bottom_left[T] = 1f64;
+
+    bottom_right[X] = center[X] + radius;
+    bottom_right[Y] = center[Y] + radius;
+    bottom_right[S] = 1f64;
+    bottom_right[T] = 1f64;
+
+    result.append(&mut triangle(top_left, top_right, bottom_left).0);
+    result.append(&mut triangle(top_right, bottom_right, bottom_left).0);
 
     return result;
 }

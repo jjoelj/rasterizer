@@ -6,6 +6,31 @@ use ndarray::{arr2, Array2};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, Range, Sub};
 
+impl Points<10> {
+    pub(crate) fn from(
+        position_buf: Vec<Position>,
+        color_buf: Vec<Color>,
+        texcoord_buf: Vec<[f64; 2]>,
+        range: Range<usize>,
+    ) -> Points<10> {
+        let mut result: Vec<Point<10>> = vec![];
+        for j in range {
+            let color = if j < color_buf.len() {
+                color_buf[j]
+            } else {
+                Color::new(vec![0f64; 4])
+            };
+            let texcoord = if j < texcoord_buf.len() {
+                texcoord_buf[j]
+            } else {
+                [0f64; 2]
+            };
+            result.push(Point::<10>::from((position_buf[j], color, texcoord)));
+        }
+        return Points::<10>(result);
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Points<const DIM: usize>(pub(crate) Vec<Point<DIM>>);
 
@@ -27,6 +52,14 @@ impl<const DIM: usize> IntoIterator for Points<DIM> {
 }
 
 impl<const DIM: usize> Points<DIM> {
+    pub(crate) fn default() -> Self {
+        Self { 0: vec![] }
+    }
+    
+    pub(crate) fn push(&mut self, value: Point<DIM>) {
+        self.0.push(value);
+    }
+
     pub(crate) fn append(&mut self, other: &mut Vec<Point<DIM>>) {
         self.0.append(other);
     }
@@ -96,6 +129,23 @@ impl From<(Position, Color, [f64; 2])> for Point<10> {
     }
 }
 
+impl From<(Position, Color, [f64; 2], f64)> for Point<11> {
+    fn from(value: (Position, Color, [f64; 2], f64)) -> Self {
+        Self {
+            data: <[f64; 11]>::try_from(
+                Point::from(value.0)
+                    .data()
+                    .into_iter()
+                    .chain(Point::from(value.1).data().into_iter())
+                    .chain(value.2)
+                    .chain([value.3])
+                    .collect::<Vec<f64>>(),
+            )
+            .unwrap(),
+        }
+    }
+}
+
 impl<const DIM: usize> Display for Point<DIM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Point: ")?;
@@ -144,7 +194,7 @@ impl<const DIM: usize> Point<DIM> {
         return self.data;
     }
 
-    fn multiply_by_matrix(&mut self, uniform_matrix: &Array2<f64>) {
+    pub(crate) fn multiply_by_matrix(&mut self, uniform_matrix: &Array2<f64>) {
         let temp: Array2<f64> = arr2(&[[self[X]], [self[Y]], [self[Z]], [self[W]]]);
         let result = uniform_matrix.dot(&temp);
         self[X] = result[[0, 0]];
@@ -153,7 +203,7 @@ impl<const DIM: usize> Point<DIM> {
         self[W] = result[[3, 0]];
     }
 
-    fn divide_by_w(&mut self, fields: &Box<[usize]>) {
+    pub(crate) fn divide_by_w(&mut self, fields: &Box<[usize]>) {
         let w = self[W];
         for &field in fields.into_iter() {
             self[field] /= w;
@@ -161,7 +211,7 @@ impl<const DIM: usize> Point<DIM> {
         self[W] = 1f64 / w;
     }
 
-    fn transform_to_viewport(&mut self, width: u32, height: u32) {
+    pub(crate) fn transform_to_viewport(&mut self, width: u32, height: u32) {
         let x = self[X];
         let y = self[Y];
         self[X] = (x + 1f64) * width as f64 / 2f64;
