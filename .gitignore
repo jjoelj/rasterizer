@@ -4,3 +4,5 @@ input/*.png
 !input/rast-*.png
 
 target
+
+rasterizer.zip
