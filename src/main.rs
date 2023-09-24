@@ -16,7 +16,7 @@ use std::str::FromStr;
 use std::{env, io};
 
 use crate::color::Color;
-use crate::depth_image::Image;
+use crate::depth_image::DepthImage;
 use crate::draw::{draw_point, draw_triangle};
 use crate::point::{Point, Points};
 use crate::position::Position;
@@ -55,7 +55,7 @@ fn main() {
     let in_filename = env::args().nth(1).unwrap();
 
     let mut out_filename: String = String::default();
-    let mut img: Image = Image::default();
+    let mut img: DepthImage = DepthImage::default();
 
     let mut texture: Option<Rgba32FImage> = None;
 
@@ -68,7 +68,7 @@ fn main() {
     let mut depth: bool = false;
     let mut s_rgb: bool = false;
     let mut hyp: bool = false;
-    // let mut fsaa:u8 = 0;
+    let mut fsaa: u32 = 1;
     let mut cull: bool = false;
     let mut decals: bool = false;
     // let mut frustum: bool = false;
@@ -108,10 +108,10 @@ fn main() {
                             continue;
                         }
 
-                        img = Image::from_pixel(dim[0], dim[1], Rgba([0f32, 0f32, 0f32, 0f32]));
+                        img = DepthImage::from_pixel(dim[0], dim[1], Rgba([0f32; 4]), fsaa);
 
                         out_filename = String::from(fields[3]);
-                        if let Err(err) = img.save(out_filename.clone()) {
+                        if let Err(err) = img.save(out_filename.clone(), s_rgb) {
                             eprintln!("{}", err);
                         }
                     }
@@ -124,7 +124,19 @@ fn main() {
                     "hyp" => {
                         hyp = true;
                     }
-                    "fsaa" => {}
+                    "fsaa" => {
+                        if let Ok(_fsaa) = fields[1].parse::<u32>() {
+                            if !(1..=8).contains(&_fsaa) {
+                                invalid = true;
+                                continue;
+                            }
+
+                            fsaa = _fsaa;
+                            img = DepthImage::from_pixel(img.width(), img.height(), Rgba([0f32; 4]), fsaa);
+                        } else {
+                            invalid = true;
+                        }
+                    }
                     "cull" => {
                         cull = true;
                     }
@@ -241,14 +253,13 @@ fn main() {
                                     &uniform_matrix,
                                     &texture,
                                     depth,
-                                    s_rgb,
                                     hyp,
                                     cull,
                                     decals,
                                 );
                             }
 
-                            if let Err(err) = img.save(out_filename.clone()) {
+                            if let Err(err) = img.save(out_filename.clone(), s_rgb) {
                                 eprintln!("{}", err);
                             }
                         } else {
@@ -284,14 +295,13 @@ fn main() {
                                     &uniform_matrix,
                                     &texture,
                                     depth,
-                                    s_rgb,
                                     hyp,
                                     cull,
                                     decals,
                                 );
                             }
 
-                            if let Err(err) = img.save(out_filename.clone()) {
+                            if let Err(err) = img.save(out_filename.clone(), s_rgb) {
                                 eprintln!("{}", err);
                             }
                         } else {
@@ -311,14 +321,14 @@ fn main() {
                                     } else {
                                         Color::new(vec![0f64; 4])
                                     },
-                                    [0f64, 0f64], // No texcoords for points
+                                    [f64::default(); 2], // No texcoords for points
                                     pointsize_buf[j],
                                 ));
 
-                                draw_point(&mut img, &mut point, &uniform_matrix, &texture, depth, s_rgb, decals);
+                                draw_point(&mut img, &mut point, &uniform_matrix, &texture, depth, decals);
                             }
 
-                            if let Err(err) = img.save(out_filename.clone()) {
+                            if let Err(err) = img.save(out_filename.clone(), s_rgb) {
                                 eprintln!("{}", err);
                             }
                         } else {

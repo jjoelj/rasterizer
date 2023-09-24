@@ -55,10 +55,6 @@ impl<const DIM: usize> Points<DIM> {
     pub(crate) fn default() -> Self {
         Self { 0: vec![] }
     }
-    
-    pub(crate) fn push(&mut self, value: Point<DIM>) {
-        self.0.push(value);
-    }
 
     pub(crate) fn append(&mut self, other: &mut Vec<Point<DIM>>) {
         self.0.append(other);
@@ -72,6 +68,7 @@ impl<const DIM: usize> Points<DIM> {
         assert_eq!(self.len(), 3);
 
         // Signed area of triangle 0-1-2 with counter-clockwise == positive
+        // https://algs4.cs.princeton.edu/91primitives
         return (self[1][X] - self[0][X]) * (self[2][Y] - self[0][Y])
             - (self[2][X] - self[0][X]) * (self[1][Y] - self[0][Y])
             > 0f64;
@@ -219,10 +216,8 @@ impl<const DIM: usize> Point<DIM> {
     }
 
     fn wrap_texcoords(&mut self) {
-        let s = self[S] - self[S].floor();
-        let t = self[T] - self[T].floor();
-        self[S] = s;
-        self[T] = t;
+        self[S] = self[S].rem_euclid(1f64);
+        self[T] = self[T].rem_euclid(1f64);
     }
 
     fn undivide_by_w(&mut self, fields: &Box<[usize]>) {

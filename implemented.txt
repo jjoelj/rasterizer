@@ -3,6 +3,7 @@ depth
 gamma
 hyperbolic
 cull
+anti-alias
 alpha
 matrix
 position23
