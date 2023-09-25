@@ -1,9 +1,9 @@
-use std::{env, io};
 use std::fs::File;
 use std::io::BufRead;
 use std::path::Path;
 use std::slice::Iter;
 use std::str::FromStr;
+use std::{env, io};
 
 use image::{io::Reader as ImageReader, Rgba, Rgba32FImage};
 use ndarray::Array2;
@@ -23,16 +23,16 @@ mod position;
 mod rasterize;
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-    where
-        P: AsRef<Path>,
+where
+    P: AsRef<Path>,
 {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
 fn read_args<P>(fields: Iter<&str>) -> Result<Vec<P>, <P as FromStr>::Err>
-    where
-        P: FromStr,
+where
+    P: FromStr,
 {
     let mut result: Vec<P> = vec![];
     for field in fields {
@@ -119,7 +119,7 @@ fn main() {
                     "depth" => {
                         depth = true;
                     }
-                    "s_rgb" => {
+                    "s_rgb" | "srgb" | "sRGB" => {
                         s_rgb = true;
                     }
                     "hyp" => {
