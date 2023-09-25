@@ -119,7 +119,7 @@ fn main() {
                     "depth" => {
                         depth = true;
                     }
-                    "s_rgb" | "srgb" | "sRGB" => {
+                    "s_rgb" | "sRGB" => {
                         s_rgb = true;
                     }
                     "hyp" => {
