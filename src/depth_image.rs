@@ -60,8 +60,6 @@ impl DepthImage {
         self.frame_buf[coord] = pixel;
         if depth.is_some() {
             self.depth_buf[coord] = depth;
-        } else {
-            self.depth_buf[coord] = Some(f64::MAX);
         }
     }
 
@@ -76,31 +74,25 @@ impl DepthImage {
                 let mut avg_r = 0f32;
                 let mut avg_g = 0f32;
                 let mut avg_b = 0f32;
-                let mut avg_a = 0f32;
-                let mut count = 0;
+                let mut divisor = 0f32;
                 for i in 0..self.fsaa {
                     for j in 0..self.fsaa {
                         let coord = ((y * self.fsaa + j) * self.width() + x * self.fsaa + i) as usize;
                         let pixel = self.frame_buf[coord];
 
-                        if self.depth_buf[coord].is_some() {
-                            avg_r += pixel[0];
-                            avg_g += pixel[1];
-                            avg_b += pixel[2];
-                            count += 1;
-                        }
-
-                        avg_a += pixel[3];
+                        avg_r += pixel[0] * pixel[3];
+                        avg_g += pixel[1] * pixel[3];
+                        avg_b += pixel[2] * pixel[3];
+                        divisor += pixel[3];
                     }
                 }
 
-                if count != 0 {
-                    avg_r /= count as f32;
-                    avg_g /= count as f32;
-                    avg_b /= count as f32;
+                if divisor != 0f32 {
+                    avg_r /= divisor;
+                    avg_g /= divisor;
+                    avg_b /= divisor;
                 }
-
-                avg_a /= self.fsaa.pow(2) as f32;
+                let avg_a = divisor / self.fsaa.pow(2) as f32;
 
                 if s_rgb {
                     let s_rgb_pixel = Srgb::<f32>::from_linear(Rgb::from_components((avg_r, avg_g, avg_b)));
