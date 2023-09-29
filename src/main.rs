@@ -78,14 +78,16 @@ fn main() {
 
     let mut line_no = 0;
     let mut invalid = false;
+    let mut err = "Unknown";
 
     if let Ok(lines) = read_lines(in_filename) {
-        for (i, _line) in lines.enumerate() {
-            line_no += 1;
+        for _line in lines {
             if invalid {
-                eprintln!("Syntax error on line {}.", i - 1);
+                eprintln!("Error on line {}: {}.", line_no, err);
                 invalid = false;
+                err = "Unknown";
             }
+            line_no += 1;
 
             if let Ok(line) = _line {
                 let trim_line = line.trim();
@@ -106,6 +108,7 @@ fn main() {
                             }
                         }
                         if invalid || dim.len() < 2 {
+                            err = "Invalid dimensions";
                             continue;
                         }
 
@@ -129,6 +132,7 @@ fn main() {
                         if let Ok(_fsaa) = fields[1].parse::<u32>() {
                             if !(1..=8).contains(&_fsaa) {
                                 invalid = true;
+                                err = "Value must be within the range [1, 8]";
                                 continue;
                             }
 
@@ -136,6 +140,7 @@ fn main() {
                             img = DepthImage::from_pixel(img.width(), img.height(), Rgba([0f32; 4]), fsaa);
                         } else {
                             invalid = true;
+                            err = "Value must be an integer";
                         }
                     }
                     "cull" => {
@@ -152,9 +157,11 @@ fn main() {
                                 texture = Some(image.into_rgba32f());
                             } else {
                                 invalid = true;
+                                err = "Unable to decode texture";
                             }
                         } else {
                             invalid = true;
+                            err = "Unable to open file";
                         }
                     }
                     "uniformMatrix" => {
@@ -169,6 +176,7 @@ fn main() {
                             let size = args[0] as usize;
                             if !(1..=4).contains(&size) {
                                 invalid = true;
+                                err = "Invalid size";
                                 continue;
                             }
 
@@ -179,6 +187,7 @@ fn main() {
                             }
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "color" => {
@@ -186,6 +195,7 @@ fn main() {
                             let size = args[0] as usize;
                             if !(3..=4).contains(&size) {
                                 invalid = true;
+                                err = "Invalid size";
                                 continue;
                             }
 
@@ -196,6 +206,7 @@ fn main() {
                             }
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "texcoord" => {
@@ -203,6 +214,7 @@ fn main() {
                             let size = args[0] as usize;
                             if size != 2 {
                                 invalid = true;
+                                err = "Invalid size";
                                 continue;
                             }
 
@@ -213,6 +225,7 @@ fn main() {
                             }
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "pointsize" => {
@@ -220,12 +233,14 @@ fn main() {
                             let size = args[0] as usize;
                             if size != 1 {
                                 invalid = true;
+                                err = "Invalid size";
                                 continue;
                             }
 
                             pointsize_buf = args[1..].to_vec();
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "elements" => {
@@ -233,6 +248,7 @@ fn main() {
                             element_buf = elements;
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "drawArraysTriangles" => {
@@ -265,6 +281,7 @@ fn main() {
                             }
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "drawElementsTriangles" => {
@@ -307,6 +324,7 @@ fn main() {
                             }
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     "drawArraysPoints" => {
@@ -334,6 +352,7 @@ fn main() {
                             }
                         } else {
                             invalid = true;
+                            err = "Invalid values";
                         }
                     }
                     _ => {}
@@ -341,7 +360,7 @@ fn main() {
             }
         }
         if invalid {
-            eprintln!("Error on line {}.", line_no);
+            eprintln!("Error on line {}: {}.", line_no, err);
         }
     }
 }
